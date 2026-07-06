@@ -543,7 +543,7 @@ export class HaMediaPlayerBrowse extends LitElement {
             ${
               this._searching
                 ? html`
-                    <div class="container">
+                    <div class="container loading">
                       <ha-spinner></ha-spinner>
                     </div>
                   `
@@ -1120,11 +1120,20 @@ export class HaMediaPlayerBrowse extends LitElement {
         }
 
         ha-spinner {
-          margin: 40px auto;
+          margin: auto;
         }
 
         .container {
           padding: 16px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+        }
+
+        .container.loading {
+          padding: 0;
+          flex: 1;
         }
 
         .no-items {
@@ -1152,7 +1161,9 @@ export class HaMediaPlayerBrowse extends LitElement {
         .content {
           overflow-y: auto;
           box-sizing: border-box;
-          height: 100%;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
         }
 
         /* HEADER */
