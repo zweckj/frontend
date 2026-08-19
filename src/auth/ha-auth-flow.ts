@@ -4,6 +4,7 @@ import type { PropertyValues } from "lit";
 import { html, LitElement, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators";
 import { keyed } from "lit/directives/keyed";
+import { fireEvent } from "../common/dom/fire_event";
 import type { LocalizeFunc } from "../common/translations/localize";
 import "../components/ha-alert";
 import "../components/ha-button";
@@ -16,11 +17,18 @@ import {
   deleteLoginFlow,
   redirectWithAuthCode,
   submitLoginFlow,
+  WEBAUTHN_AUTH_PROVIDER,
 } from "../data/auth";
 import type {
   DataEntryFlowStep,
   DataEntryFlowStepForm,
 } from "../data/data_entry_flow";
+import {
+  getWebAuthnCredential,
+  isWebAuthnAborted,
+  isWebAuthnOriginSecure,
+  isWebAuthnUsable,
+} from "../util/webauthn";
 import "./ha-auth-form";
 import type { HaAuthForm } from "./ha-auth-form";
 
@@ -153,7 +161,10 @@ export class HaAuthFlow extends LitElement {
   protected updated(changedProps: PropertyValues<this>): void {
     super.updated(changedProps);
     if (changedProps.has("authProvider")) {
-      this._providerChanged(this.authProvider);
+      this._providerChanged(
+        this.authProvider,
+        changedProps.get("authProvider")
+      );
     }
 
     if (!changedProps.has("step") || this.step?.type !== "form") {
@@ -223,7 +234,7 @@ export class HaAuthFlow extends LitElement {
             `ui.panel.page-authorize.form.providers.${step.handler[0]}.abort.${step.reason}`
           )}
         `;
-      case "form":
+      case "form": {
         return html`
           <h1>
             ${
@@ -270,6 +281,7 @@ export class HaAuthFlow extends LitElement {
             >
           </div>
         `;
+      }
       default:
         return nothing;
     }
@@ -279,7 +291,10 @@ export class HaAuthFlow extends LitElement {
     this._storeToken = (e.currentTarget as HTMLInputElement).checked;
   }
 
-  private async _providerChanged(newProvider?: AuthProvider) {
+  private async _providerChanged(
+    newProvider?: AuthProvider,
+    previousProvider?: AuthProvider
+  ) {
     if (this.step && this.step.type === "form") {
       deleteLoginFlow(this.step.flow_id).catch((err) => {
         // eslint-disable-next-line no-console
@@ -292,6 +307,23 @@ export class HaAuthFlow extends LitElement {
       console.error("No auth provider");
       this._state = "error";
       this._errorMessage = this._unknownError();
+      return;
+    }
+
+    if (newProvider.type === WEBAUTHN_AUTH_PROVIDER) {
+      this.step = undefined;
+      // The backend refuses to start a ceremony for an origin it cannot use, so
+      // report why instead of letting the flow fail.
+      if (!isWebAuthnUsable()) {
+        this._state = "error";
+        this._errorMessage = this.localize(
+          isWebAuthnOriginSecure()
+            ? "ui.panel.page-authorize.form.providers.webauthn.not_supported"
+            : "ui.panel.page-authorize.form.providers.webauthn.requires_https"
+        );
+        return;
+      }
+      await this._loginWithPasskey(newProvider, previousProvider);
       return;
     }
 
@@ -357,6 +389,89 @@ export class HaAuthFlow extends LitElement {
 
   private _unknownError() {
     return this.localize("ui.panel.page-authorize.form.unknown_error");
+  }
+
+  // Runs the whole ceremony in one go: picking the provider is already the
+  // intent to log in, so no passkey step is ever shown.
+  private async _loginWithPasskey(
+    provider: AuthProvider,
+    previousProvider?: AuthProvider
+  ) {
+    this._state = "loading";
+
+    let step: DataEntryFlowStep;
+
+    try {
+      const response = await createLoginFlow(this.clientId, this.redirectUri, [
+        provider.type,
+        provider.id,
+      ]);
+      step = await response.json();
+
+      if (!response.ok || step.type !== "form") {
+        this._state = "error";
+        this._errorMessage = (step as any).message ?? this._unknownError();
+        return;
+      }
+    } catch (err: any) {
+      // eslint-disable-next-line no-console
+      console.error("Error starting passkey login", err);
+      this._state = "error";
+      this._errorMessage = this._unknownError();
+      return;
+    }
+
+    let credential: string;
+
+    try {
+      credential = JSON.stringify(
+        await getWebAuthnCredential(
+          JSON.parse(step.description_placeholders!.webauthn_options)
+        )
+      );
+    } catch (err: any) {
+      deleteLoginFlow(step.flow_id).catch(() => undefined);
+
+      // A dismissed prompt should leave the user where they came from.
+      if (isWebAuthnAborted(err) && previousProvider) {
+        fireEvent(this, "pick-auth-provider", previousProvider);
+        return;
+      }
+
+      // eslint-disable-next-line no-console
+      console.error("Error requesting passkey", err);
+      this._state = "error";
+      this._errorMessage = this._unknownError();
+      return;
+    }
+
+    try {
+      const response = await submitLoginFlow(step.flow_id, {
+        authentication_credential: credential,
+        client_id: this.clientId,
+      });
+      const result = await response.json();
+
+      if (result.type === "create_entry") {
+        redirectWithAuthCode(
+          this.redirectUri!,
+          result.result,
+          this.oauth2State,
+          this._storeToken
+        );
+        return;
+      }
+
+      this._state = "error";
+      this._errorMessage = result.errors?.base
+        ? this._computeErrorCallback(result)(result.errors.base)
+        : (result.message ?? this._unknownError());
+    } catch (err: any) {
+      // eslint-disable-next-line no-console
+      console.error("Error submitting passkey", err);
+      this._state = "error";
+      this._errorMessage = this._unknownError();
+    }
   }
 
   private _startOver() {

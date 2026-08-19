@@ -6,6 +6,7 @@ import "../components/ha-icon-next";
 import "../components/ha-list";
 import "../components/ha-list-item";
 import type { AuthProvider } from "../data/auth";
+import { WEBAUTHN_AUTH_PROVIDER } from "../data/auth";
 
 declare global {
   interface HTMLElementTagNameMap {
@@ -38,7 +39,13 @@ export class HaPickAuthProvider extends LitElement {
               .auth_provider=${provider}
               @click=${this._handlePick}
             >
-              ${provider.name}
+              ${
+                provider.type === WEBAUTHN_AUTH_PROVIDER
+                  ? this.localize(
+                      "ui.panel.page-authorize.form.providers.webauthn.login"
+                    )
+                  : provider.name
+              }
               <ha-icon-next slot="meta"></ha-icon-next>
             </ha-list-item>
           `

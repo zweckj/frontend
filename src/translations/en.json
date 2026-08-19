@@ -11260,6 +11260,25 @@
           "logout_all_sessions_text": "This will require you to log in again on all devices with your new password, including this one.",
           "delete_failed": "Not all devices could be logged out"
         },
+        "passkeys": {
+          "header": "Passkeys",
+          "description": "Passkeys let you log in with your fingerprint, face, screen lock, or a security key instead of your password.",
+          "empty_state": "You have no passkeys yet.",
+          "created_last_used": "Created {created}, last used {last_used}",
+          "add": "Add passkey",
+          "add_failed": "Failed to add the passkey.",
+          "load_failed": "Failed to load your passkeys.",
+          "requires_https": "Passkeys only work when you open Home Assistant over HTTPS.",
+          "invalid_origin": "This address cannot be used for passkeys. Open Home Assistant over HTTPS using a hostname that is set as your internal or external Home Assistant URL.",
+          "not_supported": "Passkeys are not supported by this browser.",
+          "name": "Name",
+          "name_title": "Name your passkey",
+          "rename_title": "Rename passkey",
+          "rename_failed": "Failed to rename the passkey.",
+          "confirm_delete_title": "Delete passkey?",
+          "confirm_delete_text": "The passkey ''{name}'' will be permanently deleted. You will not be able to log in with it anymore.",
+          "delete_failed": "Failed to delete the passkey."
+        },
         "mfa": {
           "header": "Multi-factor authentication modules",
           "disable": "Disable",
@@ -11439,6 +11458,14 @@
               "abort": {
                 "not_allowed": "Your computer is not allowed."
               }
+            },
+            "webauthn": {
+              "login": "Log in with passkey",
+              "error": {
+                "invalid_auth": "We could not verify your passkey. Please try again."
+              },
+              "requires_https": "[%key:ui::panel::profile::passkeys::requires_https%]",
+              "not_supported": "[%key:ui::panel::profile::passkeys::not_supported%]"
             }
           }
         }

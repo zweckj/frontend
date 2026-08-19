@@ -15,6 +15,8 @@ export interface AuthProvider {
   users?: Record<string, string>;
 }
 
+export const WEBAUTHN_AUTH_PROVIDER = "webauthn";
+
 export interface Credential {
   type: string;
 }

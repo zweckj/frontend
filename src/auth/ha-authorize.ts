@@ -10,9 +10,10 @@ import "../components/ha-alert";
 import "../components/ha-button";
 import "../components/ha-svg-icon";
 import type { AuthProvider, AuthUrlSearchParams } from "../data/auth";
-import { fetchAuthProviders } from "../data/auth";
+import { fetchAuthProviders, WEBAUTHN_AUTH_PROVIDER } from "../data/auth";
 import { litLocalizeLiteMixin } from "../mixins/lit-localize-lite-mixin";
 import { registerServiceWorker } from "../util/register-service-worker";
+import { isWebAuthnUsable } from "../util/webauthn";
 import "./ha-auth-flow";
 
 import("./ha-pick-auth-provider");
@@ -185,6 +186,7 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
                   .authProvider=${this._authProvider}
                   .localize=${this.localize}
                   .initStoreToken=${this._preselectStoreToken}
+                  @pick-auth-provider=${this._handleAuthProviderPick}
                 ></ha-auth-flow>
                 ${
                   inactiveProviders!.length > 0
@@ -317,8 +319,24 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
         return;
       }
 
-      this._authProviders = authProviders.providers;
-      this._authProvider = authProviders.providers[0];
+      // Passkeys cannot be used on every origin, so only offer them when this
+      // page can actually run a ceremony.
+      const providers: AuthProvider[] = isWebAuthnUsable()
+        ? authProviders.providers
+        : authProviders.providers.filter(
+            (provider: AuthProvider) => provider.type !== WEBAUTHN_AUTH_PROVIDER
+          );
+
+      const usableProviders = providers.length
+        ? providers
+        : authProviders.providers;
+
+      this._authProviders = usableProviders;
+      // Passkeys prompt as soon as they are selected, so never start on them.
+      this._authProvider =
+        usableProviders.find(
+          (provider) => provider.type !== WEBAUTHN_AUTH_PROVIDER
+        ) ?? usableProviders[0];
       this._preselectStoreToken = authProviders.preselect_remember_me;
     } catch (err: any) {
       this._error = "Unable to fetch auth providers.";
