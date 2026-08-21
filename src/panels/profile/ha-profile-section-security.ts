@@ -7,6 +7,7 @@ import type { RefreshToken } from "../../data/refresh_token";
 import { haStyle } from "../../resources/styles";
 import type { HomeAssistant, Route } from "../../types";
 import "./ha-change-password-card";
+import "./ha-linked-accounts-card";
 import "./ha-long-lived-access-tokens-card";
 import "./ha-mfa-modules-card";
 import "./ha-refresh-tokens-card";
@@ -57,6 +58,8 @@ class HaProfileSectionSecurity extends LitElement {
             .hass=${this.hass}
             .mfaModules=${this.hass.user!.mfa_modules}
           ></ha-mfa-modules-card>
+
+          <ha-linked-accounts-card .hass=${this.hass}></ha-linked-accounts-card>
 
           <ha-refresh-tokens-card
             .hass=${this.hass}

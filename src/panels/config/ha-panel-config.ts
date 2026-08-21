@@ -157,6 +157,10 @@ class HaPanelConfig extends HassRouterPage {
         tag: "ha-config-users",
         load: () => import("./users/ha-config-users"),
       },
+      "single-sign-on": {
+        tag: "ha-config-single-sign-on",
+        load: () => import("./users/ha-config-single-sign-on"),
+      },
       zone: {
         tag: "ha-config-zone",
         load: () => import("./zone/ha-config-zone"),

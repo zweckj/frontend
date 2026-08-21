@@ -6,6 +6,9 @@ export interface AuthUrlSearchParams {
   client_id?: string;
   redirect_uri?: string;
   state?: string;
+  // Set when an external auth provider sent the browser back to us.
+  auth_callback?: string;
+  flow_id?: string;
 }
 
 export interface AuthProvider {
@@ -14,6 +17,49 @@ export interface AuthProvider {
   type: string;
   users?: Record<string, string>;
 }
+
+/** Login flow that was parked while the browser visited an external provider. */
+export interface ExternalLoginFlow {
+  flow_id: string;
+  client_id: string;
+  redirect_uri: string;
+  oauth2_state?: string;
+  store_token: boolean;
+  auth_provider: Pick<AuthProvider, "type" | "id">;
+  // Set when the flow attaches credentials to a signed in user instead of
+  // logging in, in which case the code goes back to this URL to be linked.
+  link_user?: boolean;
+  return_url?: string;
+}
+
+const EXTERNAL_LOGIN_FLOW_KEY = "externalLoginFlow";
+
+export const storeExternalLoginFlow = (flow: ExternalLoginFlow) => {
+  try {
+    sessionStorage.setItem(EXTERNAL_LOGIN_FLOW_KEY, JSON.stringify(flow));
+  } catch (_err: any) {
+    // Ignore
+  }
+};
+
+/** Return the parked flow, if any. It is cleared, as it can only be resumed once. */
+export const takeExternalLoginFlow = (
+  flowId: string
+): ExternalLoginFlow | undefined => {
+  try {
+    const stored = sessionStorage.getItem(EXTERNAL_LOGIN_FLOW_KEY);
+    sessionStorage.removeItem(EXTERNAL_LOGIN_FLOW_KEY);
+
+    if (!stored) {
+      return undefined;
+    }
+
+    const flow = JSON.parse(stored) as ExternalLoginFlow;
+    return flow.flow_id === flowId ? flow : undefined;
+  } catch (_err: any) {
+    return undefined;
+  }
+};
 
 export interface Credential {
   type: string;
@@ -45,6 +91,23 @@ export const getSignedPath = (
   path: string
 ): Promise<SignedPath> => hass.callWS({ type: "auth/sign_path", path });
 
+/** Attach the credentials an authorization code stands for to the signed in user. */
+export const linkUser = async (
+  hass: HomeAssistant,
+  clientId: string,
+  code: string
+) => {
+  const response = await hass.fetchWithAuth("/auth/link_user", {
+    method: "POST",
+    body: JSON.stringify({ client_id: clientId, code }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => undefined);
+    throw new Error(body?.message || response.statusText);
+  }
+};
+
 export const fetchAuthProviders = () =>
   fetch("/auth/providers", {
     credentials: "same-origin",
@@ -53,7 +116,8 @@ export const fetchAuthProviders = () =>
 export const createLoginFlow = (
   client_id: string | undefined,
   redirect_uri: string | undefined,
-  handler: (string | null)[]
+  handler: (string | null)[],
+  type?: "authorize" | "link_user"
 ) =>
   fetch("/auth/login_flow", {
     method: "POST",
@@ -62,6 +126,7 @@ export const createLoginFlow = (
       client_id,
       handler,
       redirect_uri,
+      type,
     }),
   });
 

@@ -9,8 +9,12 @@ import { extractSearchParamsObject } from "../common/url/search-params";
 import "../components/ha-alert";
 import "../components/ha-button";
 import "../components/ha-svg-icon";
-import type { AuthProvider, AuthUrlSearchParams } from "../data/auth";
-import { fetchAuthProviders } from "../data/auth";
+import type {
+  AuthProvider,
+  AuthUrlSearchParams,
+  ExternalLoginFlow,
+} from "../data/auth";
+import { fetchAuthProviders, takeExternalLoginFlow } from "../data/auth";
 import { litLocalizeLiteMixin } from "../mixins/lit-localize-lite-mixin";
 import { registerServiceWorker } from "../util/register-service-worker";
 import "./ha-auth-flow";
@@ -42,9 +46,29 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
 
   @state() private _error?: string;
 
+  @state() private _externalLoginFlow?: ExternalLoginFlow;
+
+  @state() private _externalLoginFlowExpired = false;
+
   constructor() {
     super();
     const query = extractSearchParamsObject() as AuthUrlSearchParams;
+
+    if (query.auth_callback === "1" && query.flow_id) {
+      // We were sent back by an external auth provider. It cannot pass our
+      // parameters along, so we picked them up from where we parked them.
+      const flow = takeExternalLoginFlow(query.flow_id);
+      if (!flow) {
+        this._externalLoginFlowExpired = true;
+        return;
+      }
+      this._externalLoginFlow = flow;
+      this.clientId = flow.client_id;
+      this.redirectUri = flow.redirect_uri;
+      this.oauth2State = flow.oauth2_state;
+      return;
+    }
+
     if (query.client_id) {
       this.clientId = query.client_id;
     }
@@ -57,7 +81,7 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
   }
 
   protected render() {
-    if (this._error) {
+    if (this._error || this._externalLoginFlowExpired) {
       return html`
         <style>
           ha-authorize ha-alert {
@@ -66,9 +90,13 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
             background-color: var(--primary-background-color, #fafafa);
           }
         </style>
-        <ha-alert alert-type="error"
-          >${this._error} ${this.redirectUri}</ha-alert
-        >
+        <ha-alert alert-type="error">
+          ${
+            this._externalLoginFlowExpired
+              ? this.localize("ui.panel.page-authorize.external_expired")
+              : html`${this._error} ${this.redirectUri}`
+          }
+        </ha-alert>
       `;
     }
 
@@ -185,6 +213,7 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
                   .authProvider=${this._authProvider}
                   .localize=${this.localize}
                   .initStoreToken=${this._preselectStoreToken}
+                  .externalLoginFlow=${this._externalLoginFlow}
                 ></ha-auth-flow>
                 ${
                   inactiveProviders!.length > 0
@@ -228,6 +257,10 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
 
   protected firstUpdated(changedProps: PropertyValues<this>) {
     super.firstUpdated(changedProps);
+
+    if (this._externalLoginFlowExpired) {
+      return;
+    }
 
     if (!this.redirectUri) {
       this._error = "Invalid redirect URI";
@@ -318,7 +351,14 @@ export class HaAuthorize extends litLocalizeLiteMixin(LitElement) {
       }
 
       this._authProviders = authProviders.providers;
-      this._authProvider = authProviders.providers[0];
+      this._authProvider =
+        (this._externalLoginFlow &&
+          authProviders.providers.find(
+            (provider: AuthProvider) =>
+              provider.type === this._externalLoginFlow!.auth_provider.type &&
+              provider.id === this._externalLoginFlow!.auth_provider.id
+          )) ||
+        authProviders.providers[0];
       this._preselectStoreToken = authProviders.preselect_remember_me;
     } catch (err: any) {
       this._error = "Unable to fetch auth providers.";

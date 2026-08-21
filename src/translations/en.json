@@ -7289,6 +7289,60 @@
             "single_config_entry": "{integration_name} supports only one configuration. Adding additional ones is not needed."
           }
         },
+        "single_sign_on": {
+          "caption": "Single sign-on",
+          "description": "Let people log in with your OpenID Connect identity provider",
+          "not_enabled": "The OpenID Connect auth provider is not enabled. Remove the auth_providers option from your configuration, or add an entry of type oidc to it.",
+          "test": "Test connection",
+          "test_success": "Connected to {issuer}.",
+          "saved": "Single sign-on settings saved",
+          "minutes": "minutes",
+          "provider": {
+            "header": "Identity provider",
+            "description": "Register Home Assistant as an application with your identity provider, then enter the details it gives you."
+          },
+          "redirect_uris": {
+            "header": "Redirect URIs",
+            "description": "Allow these redirect URIs in your identity provider. Logging in only works from an address that is listed here."
+          },
+          "sections": {
+            "accounts": "Accounts",
+            "advanced": "Advanced"
+          },
+          "fields": {
+            "issuer": "Issuer URL",
+            "client_id": "Client ID",
+            "use_client_secret": "Use a client secret",
+            "client_secret": "Client secret",
+            "name": "Login button name",
+            "scopes": "Scopes",
+            "username_claim": "Username claim",
+            "display_name_claim": "Display name claim",
+            "admin_group": "Administrator group",
+            "allow_auto_create": "Create accounts automatically",
+            "revalidate_interval": "Check sessions every"
+          },
+          "helpers": {
+            "issuer": "The HTTPS address of your identity provider, without a path.",
+            "client_secret": "Leave empty if your identity provider does not use one.",
+            "client_secret_stored": "A client secret is stored. Enter a new one to replace it.",
+            "name": "Shown on the login page instead of \"OpenID Connect\".",
+            "scopes": "The openid scope is always required.",
+            "username_claim": "The claim to read the username from when an account is created.",
+            "display_name_claim": "The claim to read the display name from when an account is created.",
+            "admin_group": "Members of this group in the groups claim become Home Assistant administrators. Leave empty to manage administrators yourself.",
+            "allow_auto_create": "Give anyone who can log in at your identity provider a Home Assistant account. Leave off to create accounts yourself.",
+            "revalidate_interval": "How often Home Assistant asks your identity provider whether a session is still allowed."
+          },
+          "confirm_save": {
+            "title": "Save single sign-on settings?",
+            "text": "Everyone who logged in with single sign-on will be logged out and has to log in again."
+          },
+          "confirm_delete": {
+            "title": "Remove single sign-on settings?",
+            "text": "Single sign-on will no longer be offered on the login page, and everyone who logged in with it will be logged out. Their user accounts are kept."
+          }
+        },
         "users": {
           "caption": "Users",
           "description": "Manage the Home Assistant user accounts",
@@ -11209,6 +11263,24 @@
           "enable": "Enable",
           "confirm_disable": "Are you sure you want to disable {name}?"
         },
+        "linked_accounts": {
+          "header": "Linked login methods",
+          "description": "Link another login method to this account so you can use it to log in.",
+          "linked": "Linked",
+          "link": "Link",
+          "unlink": "Unlink",
+          "not_supported": "This login method cannot be linked here.",
+          "confirm_unlink": {
+            "title": "Remove this login method?",
+            "text": "You will no longer be able to log in with it. Your Home Assistant account and everything in it is kept."
+          },
+          "errors": {
+            "not_enabled": "This login method is no longer available.",
+            "not_linked": "This login method is not linked to your account.",
+            "auto_create_enabled": "Accounts are created automatically, so logging in would link it straight back. Ask an administrator to turn that off first.",
+            "no_other_login": "Set a password for your account first, otherwise you would not be able to log in."
+          }
+        },
         "mfa_setup": {
           "title_aborted": "Aborted",
           "title_success": "Success!",
@@ -11282,6 +11354,8 @@
         "authorizing_client": "You're about to give {clientId} access to your Home Assistant instance.",
         "pick_auth_provider": "Or log in with",
         "abort_intro": "Login aborted",
+        "external_intro": "You will be sent to {provider} to log in, and returned here afterwards.",
+        "external_expired": "This login attempt is no longer available. Go back to Home Assistant and log in again.",
         "store_token": "Keep me logged in",
         "help": "Help",
         "welcome_home": "Welcome home!",
@@ -11294,6 +11368,7 @@
           "unknown_error": "Something went wrong",
           "next": "Log in",
           "previous": "Previous",
+          "continue": "Continue",
           "start_over": "Start over",
           "error": "Error: {error}",
           "error_required": "[%key:ui::common::error_required%]",
@@ -11367,6 +11442,23 @@
               },
               "abort": {
                 "no_api_password_set": "You don't have an API password configured.",
+                "login_expired": "[%key:ui::panel::page-authorize::form::providers::homeassistant::abort::login_expired%]"
+              }
+            },
+            "oidc": {
+              "abort": {
+                "not_configured": "Single sign-on is not set up yet.",
+                "no_url_available": "Home Assistant does not know its own address, so the identity provider cannot send you back.",
+                "provider_unavailable": "The identity provider could not be reached.",
+                "authorize_rejected": "The identity provider did not allow this login.",
+                "authorize_failed": "The login could not be completed.",
+                "configuration_changed": "The single sign-on settings changed while you were logging in. Please try again.",
+                "token_request_failed": "Home Assistant could not complete the login with the identity provider.",
+                "missing_id_token": "The identity provider did not return an ID token.",
+                "invalid_id_token": "The identity provider returned an ID token that could not be trusted.",
+                "missing_subject": "The identity provider did not say who you are.",
+                "userinfo_failed": "Your account details could not be read from the identity provider.",
+                "user_not_allowed": "You don't have a Home Assistant account. Ask an administrator to create one for you.",
                 "login_expired": "[%key:ui::panel::page-authorize::form::providers::homeassistant::abort::login_expired%]"
               }
             },

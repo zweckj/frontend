@@ -5,20 +5,23 @@ import { html, LitElement, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators";
 import { keyed } from "lit/directives/keyed";
 import type { LocalizeFunc } from "../common/translations/localize";
+import { sanitizeHttpUrl } from "../common/url/sanitize-http-url";
 import "../components/ha-alert";
 import "../components/ha-button";
 import "../components/ha-checkbox";
 import { computeInitialHaFormData } from "../components/ha-form/compute-initial-ha-form-data";
-import type { AuthProvider } from "../data/auth";
+import type { AuthProvider, ExternalLoginFlow } from "../data/auth";
 import {
   autocompleteLoginFields,
   createLoginFlow,
   deleteLoginFlow,
   redirectWithAuthCode,
+  storeExternalLoginFlow,
   submitLoginFlow,
 } from "../data/auth";
 import type {
   DataEntryFlowStep,
+  DataEntryFlowStepExternal,
   DataEntryFlowStepForm,
 } from "../data/data_entry_flow";
 import "./ha-auth-form";
@@ -42,6 +45,8 @@ export class HaAuthFlow extends LitElement {
 
   @property({ attribute: false }) public initStoreToken = false;
 
+  @property({ attribute: false }) public externalLoginFlow?: ExternalLoginFlow;
+
   @state() private _storeToken = false;
 
   @state() private _state: State = "loading";
@@ -55,6 +60,10 @@ export class HaAuthFlow extends LitElement {
   @query("ha-auth-form") private _form?: HaAuthForm;
 
   @query("ha-form") private _haForm?: HTMLElement;
+
+  private _externalLoginFlowResumed = false;
+
+  private _linkUserReturnUrl?: string;
 
   createRenderRoot() {
     return this;
@@ -153,7 +162,12 @@ export class HaAuthFlow extends LitElement {
   protected updated(changedProps: PropertyValues<this>): void {
     super.updated(changedProps);
     if (changedProps.has("authProvider")) {
-      this._providerChanged(this.authProvider);
+      if (this.externalLoginFlow && !this._externalLoginFlowResumed) {
+        this._externalLoginFlowResumed = true;
+        this._resumeExternalLoginFlow(this.externalLoginFlow);
+      } else {
+        this._providerChanged(this.authProvider);
+      }
     }
 
     if (!changedProps.has("step") || this.step?.type !== "form") {
@@ -182,11 +196,7 @@ export class HaAuthFlow extends LitElement {
               @click=${this._handleSubmit}
               .loading=${this._submitting}
             >
-              ${
-                this.step.type === "form"
-                  ? this.localize("ui.panel.page-authorize.form.next")
-                  : this.localize("ui.panel.page-authorize.form.start_over")
-              }
+              ${this._actionLabel(this.step)}
             </ha-button>
           </div>
         `;
@@ -214,6 +224,17 @@ export class HaAuthFlow extends LitElement {
     }
   }
 
+  private _actionLabel(step: DataEntryFlowStep) {
+    switch (step.type) {
+      case "form":
+        return this.localize("ui.panel.page-authorize.form.next");
+      case "external":
+        return this.localize("ui.panel.page-authorize.form.continue");
+      default:
+        return this.localize("ui.panel.page-authorize.form.start_over");
+    }
+  }
+
   private _renderStep(step: DataEntryFlowStep) {
     switch (step.type) {
       case "abort":
@@ -222,6 +243,15 @@ export class HaAuthFlow extends LitElement {
           ${this.localize(
             `ui.panel.page-authorize.form.providers.${step.handler[0]}.abort.${step.reason}`
           )}
+        `;
+      case "external":
+        return html`
+          <h1>${this.localize("ui.panel.page-authorize.welcome_home")}</h1>
+          <p>
+            ${this.localize("ui.panel.page-authorize.external_intro", {
+              provider: this.authProvider?.name ?? "",
+            })}
+          </p>
         `;
       case "form":
         return html`
@@ -280,7 +310,13 @@ export class HaAuthFlow extends LitElement {
   }
 
   private async _providerChanged(newProvider?: AuthProvider) {
-    if (this.step && this.step.type === "form") {
+    // Starting a new flow here always logs in, it never links an account.
+    this._linkUserReturnUrl = undefined;
+
+    if (
+      this.step &&
+      (this.step.type === "form" || this.step.type === "external")
+    ) {
       deleteLoginFlow(this.step.flow_id).catch((err) => {
         // eslint-disable-next-line no-console
         console.error("Error delete obsoleted auth flow", err);
@@ -304,19 +340,7 @@ export class HaAuthFlow extends LitElement {
       const data = await response.json();
 
       if (response.ok) {
-        // allow auth provider bypass the login form
-        if (data.type === "create_entry") {
-          redirectWithAuthCode(
-            this.redirectUri!,
-            data.result,
-            this.oauth2State,
-            this._storeToken
-          );
-          return;
-        }
-
-        this.step = data;
-        this._state = "step";
+        this._handleStep(data);
       } else {
         this._state = "error";
         this._errorMessage = data.message;
@@ -368,6 +392,10 @@ export class HaAuthFlow extends LitElement {
     if (this.step == null) {
       return;
     }
+    if (this.step.type === "external") {
+      this._startExternalStep(this.step);
+      return;
+    }
     if (this.step.type !== "form") {
       this._providerChanged(this.authProvider);
       return;
@@ -392,20 +420,99 @@ export class HaAuthFlow extends LitElement {
         return;
       }
 
-      if (newStep.type === "create_entry") {
-        redirectWithAuthCode(
-          this.redirectUri!,
-          newStep.result,
-          this.oauth2State,
-          this._storeToken
-        );
-        return;
-      }
-      this.step = newStep;
-      this._state = "step";
+      this._handleStep(newStep);
     } catch (err: any) {
       // eslint-disable-next-line no-console
       console.error("Error submitting step", err);
+      this._state = "error";
+      this._errorMessage = this._unknownError();
+    } finally {
+      this._submitting = false;
+    }
+  }
+
+  private _handleStep(step: DataEntryFlowStep) {
+    if (step.type === "create_entry") {
+      // The auth flow returns an authorization code instead of a config entry
+      const code = step.result as unknown as string;
+
+      if (this._linkUserReturnUrl) {
+        // Linking needs a signed in user, so the app finishes it for us.
+        const url = new URL(this._linkUserReturnUrl, location.origin);
+
+        if (url.origin !== location.origin) {
+          this._state = "error";
+          this._errorMessage = this._unknownError();
+          return;
+        }
+
+        url.searchParams.set("link_user_code", code);
+        document.location.assign(url.toString());
+        return;
+      }
+
+      redirectWithAuthCode(
+        this.redirectUri!,
+        code,
+        this.oauth2State,
+        this._storeToken
+      );
+      return;
+    }
+    this.step = step;
+    this._state = "step";
+  }
+
+  private _startExternalStep(step: DataEntryFlowStepExternal) {
+    const url = sanitizeHttpUrl(step.url);
+
+    if (!url || !this.authProvider) {
+      this._state = "error";
+      this._errorMessage = this._unknownError();
+      return;
+    }
+
+    // The external provider sends the browser back to /auth/authorize without
+    // the parameters we were opened with, so park them until we return.
+    storeExternalLoginFlow({
+      flow_id: step.flow_id,
+      client_id: this.clientId!,
+      redirect_uri: this.redirectUri!,
+      oauth2_state: this.oauth2State,
+      store_token: this._storeToken,
+      auth_provider: {
+        type: this.authProvider.type,
+        id: this.authProvider.id,
+      },
+    });
+
+    this._submitting = true;
+    document.location.assign(url);
+  }
+
+  private async _resumeExternalLoginFlow(flow: ExternalLoginFlow) {
+    this._storeToken = flow.store_token;
+    this._linkUserReturnUrl = flow.link_user ? flow.return_url : undefined;
+    this._state = "loading";
+    this._submitting = true;
+
+    try {
+      const response = await submitLoginFlow(flow.flow_id, {
+        client_id: this.clientId,
+      });
+
+      const step = await response.json();
+
+      if (!response.ok) {
+        this._state = "error";
+        this._errorMessage = step.message;
+        return;
+      }
+
+      this._handleStep(step);
+    } catch (err: any) {
+      // eslint-disable-next-line no-console
+      console.error("Error resuming auth flow", err);
       this._state = "error";
       this._errorMessage = this._unknownError();
     } finally {
