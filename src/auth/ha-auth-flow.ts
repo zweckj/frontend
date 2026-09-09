@@ -408,6 +408,12 @@ export class HaAuthFlow extends LitElement {
       ]);
       step = await response.json();
 
+      if (response.ok && step.type === "abort") {
+        this.step = step;
+        this._state = "step";
+        return;
+      }
+
       if (!response.ok || step.type !== "form") {
         this._state = "error";
         this._errorMessage = (step as any).message ?? this._unknownError();
@@ -451,6 +457,18 @@ export class HaAuthFlow extends LitElement {
         client_id: this.clientId,
       });
       const result = await response.json();
+
+      if (!response.ok) {
+        this._state = "error";
+        this._errorMessage = result.message ?? this._unknownError();
+        return;
+      }
+
+      if (result.type === "abort") {
+        this.step = result;
+        this._state = "step";
+        return;
+      }
 
       if (result.type === "create_entry") {
         redirectWithAuthCode(

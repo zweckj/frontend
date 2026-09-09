@@ -11483,6 +11483,7 @@
           "description": "Passkeys let you log in with your fingerprint, face, screen lock, or a security key instead of your password.",
           "empty_state": "You have no passkeys yet.",
           "created_last_used": "Created {created}, last used {last_used}",
+          "registered_for": "Registered for {domain}",
           "add": "Add passkey",
           "add_failed": "Failed to add the passkey.",
           "load_failed": "Failed to load your passkeys.",
@@ -11494,8 +11495,14 @@
           "rename_title": "Rename passkey",
           "rename_failed": "Failed to rename the passkey.",
           "confirm_delete_title": "Delete passkey?",
-          "confirm_delete_text": "The passkey ''{name}'' will be permanently deleted. You will not be able to log in with it anymore.",
-          "delete_failed": "Failed to delete the passkey."
+          "confirm_delete_text": "The passkey ''{name}'' will be permanently deleted, and sessions signed in with passkeys will end. You will not be able to log in with this passkey anymore.",
+          "delete_failed": "Failed to delete the passkey.",
+          "errors": {
+            "credential_already_registered": "This passkey is already registered. Choose a different passkey or security key.",
+            "credential_not_found": "This passkey no longer exists. Reload your profile to update the list.",
+            "last_login_method": "Add another available login method before deleting your last passkey so you can still log in.",
+            "invalid_auth": "The passkey could not be verified. Try adding it again."
+          }
         },
         "mfa": {
           "header": "Multi-factor authentication modules",
@@ -11679,6 +11686,11 @@
             },
             "webauthn": {
               "login": "Log in with passkey",
+              "abort": {
+                "missing_origin": "The browser did not provide an origin for this passkey login. Open Home Assistant directly and try again.",
+                "invalid_origin": "[%key:ui::panel::profile::passkeys::invalid_origin%]",
+                "login_expired": "[%key:ui::panel::page-authorize::form::providers::homeassistant::abort::login_expired%]"
+              },
               "error": {
                 "invalid_auth": "We could not verify your passkey. Please try again."
               },

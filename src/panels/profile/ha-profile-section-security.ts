@@ -52,7 +52,10 @@ class HaProfileSectionSecurity extends LitElement {
               : ""
           }
 
-          <ha-passkeys-card .hass=${this.hass}></ha-passkeys-card>
+          <ha-passkeys-card
+            .hass=${this.hass}
+            @hass-refresh-tokens=${this._refreshRefreshTokens}
+          ></ha-passkeys-card>
 
           <ha-mfa-modules-card
             .hass=${this.hass}

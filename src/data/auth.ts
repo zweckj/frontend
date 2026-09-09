@@ -10,7 +10,7 @@ export interface AuthUrlSearchParams {
 
 export interface AuthProvider {
   name: string;
-  id: string;
+  id: string | null;
   type: string;
   users?: Record<string, string>;
 }

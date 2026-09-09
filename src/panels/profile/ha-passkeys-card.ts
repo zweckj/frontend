@@ -4,6 +4,7 @@ import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators";
 import { relativeTime } from "../../common/datetime/relative_time";
 import type { HASSDomCurrentTargetEvent } from "../../common/dom/fire_event";
+import { fireEvent } from "../../common/dom/fire_event";
 import "../../components/ha-alert";
 import "../../components/ha-button";
 import "../../components/ha-card";
@@ -47,6 +48,8 @@ class HaPasskeysCard extends LitElement {
 
   @state() private _error?: string;
 
+  @state() private _registering = false;
+
   protected firstUpdated() {
     this._fetchCredentials();
   }
@@ -88,9 +91,15 @@ class HaPasskeysCard extends LitElement {
               : this._credentials.length
                 ? this._credentials.map(
                     (credential) =>
-                      html`<ha-settings-row two-line>
+                      html`<ha-settings-row three-line wrap-heading>
                         <span slot="heading">${credential.name}</span>
                         <div slot="description">
+                          <div>
+                            ${this.hass.localize(
+                              "ui.panel.profile.passkeys.registered_for",
+                              { domain: credential.rp_id }
+                            )}
+                          </div>
                           ${this.hass.localize(
                             "ui.panel.profile.passkeys.created_last_used",
                             {
@@ -109,12 +118,14 @@ class HaPasskeysCard extends LitElement {
                           .credential=${credential}
                           .label=${this.hass.localize("ui.common.rename")}
                           .path=${mdiPencil}
+                          .disabled=${this._registering}
                           @click=${this._renameCredential}
                         ></ha-icon-button>
                         <ha-icon-button
                           .credential=${credential}
                           .label=${this.hass.localize("ui.common.delete")}
                           .path=${mdiDelete}
+                          .disabled=${this._registering}
                           @click=${this._deleteCredential}
                         ></ha-icon-button>
                       </ha-settings-row>`
@@ -127,7 +138,11 @@ class HaPasskeysCard extends LitElement {
           }
         </div>
         <div class="card-actions">
-          <ha-button .disabled=${!canRegister} @click=${this._addCredential}>
+          <ha-button
+            .disabled=${!canRegister || this._registering}
+            .loading=${this._registering}
+            @click=${this._addCredential}
+          >
             ${this.hass.localize("ui.panel.profile.passkeys.add")}
           </ha-button>
         </div>
@@ -149,25 +164,28 @@ class HaPasskeysCard extends LitElement {
   }
 
   private async _addCredential(): Promise<void> {
+    if (this._registering) {
+      return;
+    }
+    this._registering = true;
     this._error = undefined;
     try {
-      const options = await startWebAuthnRegistration(this.hass);
-      const credential = await createWebAuthnCredential(options);
       const name = await showPromptDialog(this, {
         title: this.hass.localize("ui.panel.profile.passkeys.name_title"),
         inputLabel: this.hass.localize("ui.panel.profile.passkeys.name"),
         confirmText: this.hass.localize("ui.common.save"),
       });
-      // Cancelling discards the passkey by never verifying it, which leaves the
-      // pending challenge to expire on its own.
       if (name === null) {
         return;
       }
+      const options = await startWebAuthnRegistration(this.hass);
+      const credential = await createWebAuthnCredential(options);
       await verifyWebAuthnRegistration(
         this.hass,
         credential,
         name || undefined
       );
+      fireEvent(this, "hass-refresh-current-user");
     } catch (err: any) {
       if (isWebAuthnAborted(err)) {
         return;
@@ -180,9 +198,11 @@ class HaPasskeysCard extends LitElement {
       }
       await showAlertDialog(this, {
         title: this.hass.localize("ui.panel.profile.passkeys.add_failed"),
-        text: err.message,
+        text: this._errorMessage(err),
       });
       return;
+    } finally {
+      this._registering = false;
     }
     await this._fetchCredentials();
   }
@@ -206,7 +226,7 @@ class HaPasskeysCard extends LitElement {
     } catch (err: any) {
       await showAlertDialog(this, {
         title: this.hass.localize("ui.panel.profile.passkeys.rename_failed"),
-        text: err.message,
+        text: this._errorMessage(err),
       });
       return;
     }
@@ -234,14 +254,30 @@ class HaPasskeysCard extends LitElement {
 
     try {
       await deleteWebAuthnCredential(this.hass, credential.credential_id);
+      fireEvent(this, "hass-refresh-current-user");
+      fireEvent(this, "hass-refresh-tokens");
     } catch (err: any) {
       await showAlertDialog(this, {
         title: this.hass.localize("ui.panel.profile.passkeys.delete_failed"),
-        text: err.message,
+        text: this._errorMessage(err),
       });
       return;
     }
     await this._fetchCredentials();
+  }
+
+  private _errorMessage(err: { code?: string; message: string }) {
+    switch (err.code) {
+      case "credential_already_registered":
+      case "credential_not_found":
+      case "last_login_method":
+      case "invalid_auth":
+        return this.hass.localize(
+          `ui.panel.profile.passkeys.errors.${err.code}`
+        );
+      default:
+        return err.message;
+    }
   }
 
   static get styles(): CSSResultGroup {

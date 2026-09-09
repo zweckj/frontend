@@ -2,6 +2,7 @@ import type { HomeAssistant } from "../types";
 
 export interface WebAuthnCredentialMeta {
   credential_id: string;
+  rp_id: string;
   name: string;
   /** Seconds since the epoch. */
   created_at: number;
